@@ -141,3 +141,5 @@ module "memorystore" {
 #
 #   depends_on = [module.cloudrun]
 # }
+
+# Phase 2 note: staging SQL instance imported after apply-wait timeout
