@@ -18,6 +18,7 @@ resource "google_sql_database_instance" "pg" {
 
   settings {
     tier              = var.db_tier
+    edition           = "ENTERPRISE"
     availability_type = var.db_availability_type
 
     ip_configuration {
