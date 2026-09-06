@@ -40,7 +40,7 @@ for ENV in dev staging prod; do
   echo "==> CI service account + roles"
   gcloud iam service-accounts create github-actions --project "${PROJECT_ID}" \
     --display-name="GitHub Actions CI/CD" 2>/dev/null || echo "    (exists)"
-  for ROLE in roles/editor roles/resourcemanager.projectIamAdmin roles/secretmanager.secretAccessor; do
+  for ROLE in roles/editor roles/resourcemanager.projectIamAdmin roles/secretmanager.secretAccessor roles/servicenetworking.networksAdmin; do
     gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
       --member="serviceAccount:${SA_EMAIL}" --role="${ROLE}" --quiet >/dev/null
   done
