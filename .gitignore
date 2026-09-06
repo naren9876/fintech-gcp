@@ -1,0 +1,11 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+plan.txt
+crash.log
+.env
+.env.*
+*.pem
+node_modules/
+.DS_Store

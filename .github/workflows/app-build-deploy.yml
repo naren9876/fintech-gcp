@@ -1,0 +1,173 @@
+name: App Build & Deploy
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", ".github/workflows/app-build-deploy.yml"]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: us-central1
+  SERVICE: auth-service
+
+jobs:
+  # =================================================================
+  # BUILD ONCE. The same Trivy-certified bytes are pushed to all three
+  # registries; every environment runs the identical SHA.
+  # =================================================================
+  build-scan-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install + test
+        working-directory: app
+        run: |
+          npm install
+          npm test -- --passWithNoTests
+
+      - name: Build image (SHA-tagged)
+        working-directory: app
+        run: docker build -t "app:${{ github.sha }}" .
+
+      # The gate: vulnerabilities kill the build BEFORE any registry sees it
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: app:${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+
+      # Push the certified image to each environment's registry.
+      # Graceful skip if an env's infra doesn't exist yet (pre-Phase-1 there).
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER_DEV }}
+          service_account: ${{ vars.GCP_CI_SA_DEV }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Push -> dev
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          BASE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_DEV }}/fintech/auth-service"
+          docker tag app:${{ github.sha }} "$BASE:${{ github.sha }}"
+          docker tag app:${{ github.sha }} "$BASE:latest"
+          docker push "$BASE:${{ github.sha }}" && docker push "$BASE:latest"
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER_STG }}
+          service_account: ${{ vars.GCP_CI_SA_STG }}
+      - name: Push -> staging (skips until its Phase 1 exists)
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          if gcloud artifacts repositories describe fintech --location ${REGION} \
+               --project "${{ vars.GCP_PROJECT_ID_STG }}" >/dev/null 2>&1; then
+            BASE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_STG }}/fintech/auth-service"
+            docker tag app:${{ github.sha }} "$BASE:${{ github.sha }}"
+            docker tag app:${{ github.sha }} "$BASE:latest"
+            docker push "$BASE:${{ github.sha }}" && docker push "$BASE:latest"
+          else
+            echo "staging registry not created yet - skipped"
+          fi
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER_PRD }}
+          service_account: ${{ vars.GCP_CI_SA_PRD }}
+      - name: Push -> prod (skips until its Phase 1 exists)
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          if gcloud artifacts repositories describe fintech --location ${REGION} \
+               --project "${{ vars.GCP_PROJECT_ID_PRD }}" >/dev/null 2>&1; then
+            BASE="${REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID_PRD }}/fintech/auth-service"
+            docker tag app:${{ github.sha }} "$BASE:${{ github.sha }}"
+            docker tag app:${{ github.sha }} "$BASE:latest"
+            docker push "$BASE:${{ github.sha }}" && docker push "$BASE:latest"
+          else
+            echo "prod registry not created yet - skipped"
+          fi
+
+  # =================================================================
+  # DEV deploys automatically; STAGING and PROD wait for approval.
+  # Every deploy ends with the same proof: /health answers 200.
+  # =================================================================
+  deploy-dev:
+    needs: build-scan-push
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER_DEV }}
+          service_account: ${{ vars.GCP_CI_SA_DEV }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy + verify
+        run: |
+          P="${{ vars.GCP_PROJECT_ID_DEV }}"
+          IMG="${REGION}-docker.pkg.dev/${P}/fintech/auth-service:${{ github.sha }}"
+          if ! gcloud run services describe "$SERVICE" --region "$REGION" --project "$P" >/dev/null 2>&1; then
+            echo "Service not created yet (pre-Phase-3) - skipped."; exit 0; fi
+          gcloud run deploy "$SERVICE" --image "$IMG" --region "$REGION" --project "$P" --quiet
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$P" --format 'value(status.url)')
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/health" || echo 000)
+            echo "health $i: $CODE"; [ "$CODE" = "200" ] && exit 0; sleep 10
+          done
+          exit 1
+
+  deploy-staging:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    environment: staging   # <- approval gate
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER_STG }}
+          service_account: ${{ vars.GCP_CI_SA_STG }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy + verify
+        run: |
+          P="${{ vars.GCP_PROJECT_ID_STG }}"
+          IMG="${REGION}-docker.pkg.dev/${P}/fintech/auth-service:${{ github.sha }}"
+          if ! gcloud run services describe "$SERVICE" --region "$REGION" --project "$P" >/dev/null 2>&1; then
+            echo "Service not created yet - skipped."; exit 0; fi
+          gcloud run deploy "$SERVICE" --image "$IMG" --region "$REGION" --project "$P" --quiet
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$P" --format 'value(status.url)')
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/health" || echo 000)
+            echo "health $i: $CODE"; [ "$CODE" = "200" ] && exit 0; sleep 10
+          done
+          exit 1
+
+  deploy-prod:
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: production   # <- approval gate
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER_PRD }}
+          service_account: ${{ vars.GCP_CI_SA_PRD }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy + verify
+        run: |
+          P="${{ vars.GCP_PROJECT_ID_PRD }}"
+          IMG="${REGION}-docker.pkg.dev/${P}/fintech/auth-service:${{ github.sha }}"
+          if ! gcloud run services describe "$SERVICE" --region "$REGION" --project "$P" >/dev/null 2>&1; then
+            echo "Service not created yet - skipped."; exit 0; fi
+          gcloud run deploy "$SERVICE" --image "$IMG" --region "$REGION" --project "$P" --quiet
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$P" --format 'value(status.url)')
+          for i in $(seq 1 10); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/health" || echo 000)
+            echo "health $i: $CODE"; [ "$CODE" = "200" ] && exit 0; sleep 10
+          done
+          exit 1

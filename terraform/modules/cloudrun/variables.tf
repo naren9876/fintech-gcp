@@ -1,0 +1,12 @@
+variable "project_id" { type = string }
+variable "region" { type = string }
+variable "environment" { type = string }
+variable "service_name" { type = string }
+variable "container_port" { type = number }
+variable "image_base" { type = string }
+variable "connector_id" { type = string }
+variable "database_url_secret_id" { type = string }
+variable "redis_url_secret_id" { type = string }
+variable "jwt_secret_id" { type = string }
+variable "run_min_instances" { type = number }
+variable "run_max_instances" { type = number }
