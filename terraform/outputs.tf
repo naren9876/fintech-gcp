@@ -9,15 +9,15 @@ output "artifact_registry_url" {
 }
 
 # ---- Phase 2 outputs ----
-# output "cloudsql_private_ip" {
-#   value     = module.cloudsql.private_ip
-#   sensitive = true
-# }
+output "cloudsql_private_ip" {
+  value     = module.cloudsql.private_ip
+  sensitive = true
+}
 #
-# output "redis_host" {
-#   value     = module.memorystore.host
-#   sensitive = true
-# }
+output "redis_host" {
+  value     = module.memorystore.host
+  sensitive = true
+}
 
 # ---- Phase 3 outputs ----
 # output "service_url" {

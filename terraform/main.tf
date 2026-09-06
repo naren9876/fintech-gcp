@@ -70,41 +70,41 @@ module "registry" {
 # The uncommenting IS the deployment mechanism: branch -> uncomment ->
 # terraform fmt -> PR -> read the plan comment -> merge -> apply.
 # ===========================================================================
-# module "secrets" {
-#   source      = "./modules/secrets"
-#   project_id  = var.project_id
-#   environment = var.environment
+module "secrets" {
+  source      = "./modules/secrets"
+  project_id  = var.project_id
+  environment = var.environment
+  #
+  depends_on = [google_project_service.apis]
+}
 #
-#   depends_on = [google_project_service.apis]
-# }
+module "cloudsql" {
+  source      = "./modules/cloudsql"
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.environment
+  network_id  = module.network.network_id
+  #
+  db_tier                = var.db_tier
+  db_availability_type   = var.db_availability_type
+  db_backups_enabled     = var.db_backups_enabled
+  db_deletion_protection = var.db_deletion_protection
+  #
+  depends_on = [module.network]
+}
 #
-# module "cloudsql" {
-#   source      = "./modules/cloudsql"
-#   project_id  = var.project_id
-#   region      = var.region
-#   environment = var.environment
-#   network_id  = module.network.network_id
-#
-#   db_tier                = var.db_tier
-#   db_availability_type   = var.db_availability_type
-#   db_backups_enabled     = var.db_backups_enabled
-#   db_deletion_protection = var.db_deletion_protection
-#
-#   depends_on = [module.network]
-# }
-#
-# module "memorystore" {
-#   source      = "./modules/memorystore"
-#   project_id  = var.project_id
-#   region      = var.region
-#   environment = var.environment
-#   network_id  = module.network.network_id
-#
-#   redis_tier      = var.redis_tier
-#   redis_memory_gb = var.redis_memory_gb
-#
-#   depends_on = [module.network]
-# }
+module "memorystore" {
+  source      = "./modules/memorystore"
+  project_id  = var.project_id
+  region      = var.region
+  environment = var.environment
+  network_id  = module.network.network_id
+  #
+  redis_tier      = var.redis_tier
+  redis_memory_gb = var.redis_memory_gb
+  #
+  depends_on = [module.network]
+}
 
 # ===========================================================================
 # PHASE 3 - Compute: Cloud Run service wired to secrets + private network
