@@ -111,23 +111,23 @@ module "memorystore" {
 # Prerequisite: the app pipeline must have pushed a certified image first
 # (the "Interlude" - see README). Uncomment via PR.
 # ===========================================================================
-# module "cloudrun" {
-#   source                 = "./modules/cloudrun"
-#   project_id             = var.project_id
-#   region                 = var.region
-#   environment            = var.environment
-#   service_name           = var.service_name
-#   container_port         = var.container_port
-#   image_base             = module.registry.image_base
-#   connector_id           = module.network.connector_id
-#   database_url_secret_id = module.cloudsql.database_url_secret_id
-#   redis_url_secret_id    = module.memorystore.redis_url_secret_id
-#   jwt_secret_id          = module.secrets.jwt_secret_id
-#   run_min_instances      = var.run_min_instances
-#   run_max_instances      = var.run_max_instances
-#
-#   depends_on = [module.cloudsql, module.memorystore, module.secrets]
-# }
+module "cloudrun" {
+  source                 = "./modules/cloudrun"
+  project_id             = var.project_id
+  region                 = var.region
+  environment            = var.environment
+  service_name           = var.service_name
+  container_port         = var.container_port
+  image_base             = module.registry.image_base
+  connector_id           = module.network.connector_id
+  database_url_secret_id = module.cloudsql.database_url_secret_id
+  redis_url_secret_id    = module.memorystore.redis_url_secret_id
+  jwt_secret_id          = module.secrets.jwt_secret_id
+  run_min_instances      = var.run_min_instances
+  run_max_instances      = var.run_max_instances
+  #
+  depends_on = [module.cloudsql, module.memorystore, module.secrets]
+}
 
 # ===========================================================================
 # PHASE 4 - Observability: dashboard + 5xx alert  (uncomment via PR)

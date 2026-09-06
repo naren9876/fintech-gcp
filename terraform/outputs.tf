@@ -20,10 +20,10 @@ output "redis_host" {
 }
 
 # ---- Phase 3 outputs ----
-# output "service_url" {
-#   value       = module.cloudrun.service_url
-#   description = "Public HTTPS URL of the auth service"
-# }
+output "service_url" {
+  value       = module.cloudrun.service_url
+  description = "Public HTTPS URL of the auth service"
+}
 
 # ---- Phase 4 outputs ----
 # output "dashboard_url" {
