@@ -143,3 +143,4 @@ module "cloudrun" {
 # }
 
 # Phase 2 note: staging SQL instance imported after apply-wait timeout
+# Phase 3 retry after secretmanager.admin grant
